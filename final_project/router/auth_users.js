@@ -1,114 +1,104 @@
-const express = require('express');
-const jwt = require('jsonwebtoken');
-let books = require("./booksdb.js");
-const booksService = require('../services/booksService')
-const regd_users = express.Router();
+const express = require('express')
+const jwt = require('jsonwebtoken')
+let books = require('./booksdb.js')
+const regd_users = express.Router()
+const session = require('express-session')
 
+let users = [
+	{
+		username: 'user1',
+		password: 'user1',
+	},
+	{
+		username: 'user2',
+		password: 'user2',
+	},
+	{
+		username: 'user3',
+		password: 'user3',
+	},
+	{
+		username: 'ranoa',
+		password: 'bakfiets',
+	},
+]
 
-let users = [];
-
-const isValid = (username) => { //returns boolean
-  //write code to check is the username is valid
-  const user = users.filter(u => u.username == username)
-  if (user.length > 0) {
-    return false
-  }
-  return true
+const isValid = username => {
+	//returns boolean
+	//write code to check is the username is valid
+	const userMatches = users.filter(user => user.username === username)
+	return userMatches.length > 0
 }
 
-const authenticatedUser = (username, password) => { //returns boolean
-  //write code to check if username and password match the one we have in records.
-  try {
-    const [user] = users.filter(u => u.username == username)
-    const isValidPassword = user.password == password
-    if (isValidPassword) {
-      return true
-    }
-    return false
-  } catch (error) {
-    return false
-  }
+const authenticatedUser = (username, password) => {
+	//returns boolean
+	const matchingUsers = users.filter(
+		user => user.username === username && user.password === password
+	)
+	return matchingUsers.length > 0
 }
+//write code to check if username and password match the one we have in records.
+regd_users.use(
+	session({secret: 'fingerpint'}, (resave = true), (saveUninitialized = true))
+)
 
 //only registered users can login
-regd_users.post("/login", (req, res) => {
-  //Write your code here
+regd_users.post('/login', (req, res) => {
+	const username = req.body.username
+	const password = req.body.password
 
+	if (!username || !password) {
+		return res.status(404).json({message: 'Error logging in'})
+	}
 
-  const { username, password } = req.body
-  try {
-    if (!username || !password) {
-      return res.status(400).json({ code: 400, message: "Bad request!. username / password not provided" })
-    }
+	if (authenticatedUser(username, password)) {
+		let accessToken = jwt.sign(
+			{
+				data: password,
+			},
+			'access',
+			{expiresIn: 60 * 60}
+		)
 
-    if (authenticatedUser(username, password)) {
-
-      let accessToken = jwt.sign({
-        data: password
-      }, 'access', { expiresIn: 60 * 60 });
-
-      req.session.authorization = {
-        accessToken, username
-      }
-      return res.status(200).json({ code: 200, message: `${username} logged in!` })
-    }
-    return res.status(401).json({ code: 401, message: 'username and password does not match! check again' })
-  } catch (error) {
-    return res.status(500).json({ code: 500, message: error.message })
-  }
-});
-
-// Add a book review
-regd_users.put("/auth/review/:isbn", (req, res) => {
-  //Write your code here
-  const { isbn } = req.params
-  const { review } = req.query
-  const { username } = req.session.authorization
-  try {
-    if (!isbn) {
-      console.error("Bad request! isbn not provided")
-      return res.status(400).json({ code: 400, message: 'Bad request! isbn not provided' })
-    }
-    if (!review) {
-      console.error("Bad request! review not provided")
-      return res.status(400).json({ code: 400, message: 'Bad request! review not provided' })
-    }
-    const book = booksService.getBookByisbn({ isbn, books })
-
-    let existingReview = book[isbn].reviews
-
-    const newReview = {
-      [username]: review
-    }
-
-    books[isbn].reviews = {
-      ...existingReview,
-      ...newReview
-    }
-
-    return res.status(201).json(books[isbn])
-  } catch (error) {
-    return res.status(error.code || 500).json({ code: error.code || 500, message: error.message })
-  }
-});
-
-
-regd_users.delete("/auth/review/:isbn", (req, res) => {
-  const { isbn } = req.params
-  const { username } = req.session.authorization
-  try {
-    if (!isbn) {
-      console.error("Bad request! isbn not provided")
-      return res.status(400).json({ code: 400, message: 'Bad request! isbn not provided' })
-    }
-    delete books[isbn].reviews[username]
-    return res.status(200).json({ message: `deleted your review`, book: books[isbn] })
-
-  } catch (error) {
-    return res.status(error.code || 500).json({ code: error.code || 500, message: error.message })
-  }
+		req.session.authorization = {
+			accessToken,
+			username,
+		}
+		return res.status(200).send('User successfully logged in')
+	} else {
+		return res
+			.status(208)
+			.json({message: 'Invalid Login. Check username and password'})
+	}
 })
 
-module.exports.authenticated = regd_users;
-module.exports.isValid = isValid;
-module.exports.users = users;
+// Add a book review
+regd_users.put('/auth/review/:isbn', (req, res) => {
+	//Write your code here
+	const isbn = req.params.isbn
+	const review = req.body.review
+	const username = req.session.authorization.username
+	if (books[isbn]) {
+		let book = books[isbn]
+		book.reviews[username] = review
+		return res.status(200).send('Review successfully posted')
+	} else {
+		return res.status(404).json({message: `ISBN ${isbn} not found`})
+	}
+})
+
+regd_users.delete('/auth/review/:isbn', (req, res) => {
+	const isbn = req.params.isbn
+	const username = req.session.authorization.username
+	if (books[isbn]) {
+		let book = books[isbn]
+		delete book.reviews[username]
+		return res.status(200).send('Review successfully deleted')
+	} else {
+		return res.status(404).json({message: `ISBN ${isbn} not found`})
+	}
+})
+
+module.exports.authenticated = regd_users
+module.exports.isValid = isValid
+module.exports.users = users
