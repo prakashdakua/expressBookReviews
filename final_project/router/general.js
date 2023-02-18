@@ -103,7 +103,7 @@ const axiosAction = {
   // getting the list of books available in the shop using callback
   getAllBooks: async () => {
 
-    http.get('http://localhost:5000/', res => {
+    axios.get('https://prakashdakua-5000.theiadocker-1-labs-prod-theiak8s-4-tor01.proxy.cognitiveclass.ai/', res => {
       let data = ''
       res.on('error', e => {
         console.error(err.response ? err.response.data : err.message)
